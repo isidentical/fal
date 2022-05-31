@@ -12,8 +12,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: ["postgres", "bigquery", "snowflake", "redshift"]
-        python: ["3.7", "3.8", "3.9", "3.10"]
+        profile: ["duckdb"]
+        python: ["3.7"]
 
     steps:
       - uses: actions/checkout@v2
@@ -33,11 +33,21 @@ jobs:
         working-directory: integration_tests
         run: pip install behave
 
+      - name: Install duckdb
+        working-directory: integration_tests
+        if: matrix.profile == 'duckdb'
+        run: pip install duckdb
+
+      - name: Create duck db directory
+        working-directory: ./
+        if: matrix.profile == 'duckdb'
+        run: mkdir temp
+
       # Avoid running against the same profile at the same time
       - name: Set up mutex on profiles
         # TODO: waiting for https://github.com/ben-z/gh-action-mutex/pull/7 to be accepted
         uses: chamini2/gh-action-mutex@patch-1
-        if: matrix.profile != 'postgres'
+        if: matrix.profile != 'postgres' || matrix.profile != 'duckdb'
         with:
           branch: gh-mutex-profile-${{ matrix.profile }}
 
