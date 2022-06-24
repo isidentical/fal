@@ -1,3 +1,4 @@
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 import subprocess
@@ -6,6 +7,7 @@ import faldbt.lib as lib
 from dbt.logger import GLOBAL_LOGGER as logger
 import os
 import shutil
+import traceback
 from os.path import exists
 import argparse
 
@@ -148,14 +150,6 @@ def dbt_run(
     )
 
 
-def _get_index_run_results(target_path: str, run_index: int) -> Dict[Any, Any]:
-    """Get run results for a given run index."""
-    with open(
-        os.path.join(target_path, f"fal_results_{run_index}.json")
-    ) as raw_results:
-        return json.load(raw_results)
-
-
 def _get_run_result_file(target_path: str) -> str:
     return os.path.join(target_path, "run_results.json")
 
@@ -166,3 +160,117 @@ def _create_fal_result_file(target_path: str, run_index: int):
         shutil.copy(
             fal_run_result, os.path.join(target_path, f"fal_results_{run_index}.json")
         )
+
+
+def _process_logs(raw_logs: str):
+    logs, output = [], []
+    for line in raw_logs.splitlines():
+        output.append(line)
+        try:
+            json_line = json.loads(line)
+        except json.JSONDecodeError:
+            logger.error(line.rstrip())
+        else:
+            if "message" in json_line:
+                try:
+                    actual_msg = json.loads(json_line["message"])["msg"]
+                except:
+                    actual_msg = json_line["message"]
+            else:
+                actual_msg = line.rstrip()
+            logger.info(actual_msg)
+
+    return logs, output
+
+
+@contextmanager
+def _patch_log_manager(log_manager, output):
+    # Temporarily patch the log_manager's stdout and stderr with the given
+    # 'output' buffer, and revert it back at the exit of the context manager.
+    original_stdout, original_stderr = log_manager.stdout, log_manager.stderr
+    try:
+        log_manager.set_output_stream(output)
+        yield
+    finally:
+        log_manager.reset_handlers()
+        log_manager.set_output_stream(original_stdout, original_stderr)
+
+
+def _dbt_run_through_python(args: List[str], target_path: str, run_index: int):
+    import io
+    from dbt.main import handle_and_check
+    from dbt.logger import log_manager
+
+    # This is the core function where we execute the dbt run command. We'll initially
+    # redirect all possible streams into our output (this is very similiar how subprocess)
+    # is doing.
+    output = io.StringIO()
+    with redirect_stdout(output), redirect_stderr(output), _patch_log_manager(
+        log_manager, output
+    ):
+        # Then we'll run the given DBT command, and get the 'run_results'.
+        try:
+            run_results, success = handle_and_check(args)
+        except BaseException as exc:
+            run_results = None
+            return_code = getattr(exc, "code", 1)
+            traceback.print_exc(exc)
+        else:
+            return_code = 0 if success else 1
+
+    logger.debug(f"dbt exited with return code {return_code}")
+
+    raw_output = output.getvalue()
+    logs, _ = _process_logs(raw_output)
+
+    # The 'run_results' object has a 'write()' method which is basically json.dump().
+    # We'll dump it directly to the fal results file (instead of first dumping it to
+    # run results and then copying it over).
+    if run_results is not None:
+        run_results.write(os.path.join(target_path, f"fal_results_{run_index}.json"))
+    else:
+        raise NotImplementedError("TODO: What should happen if dbt run fails and there are no run results file?")
+
+    return return_code, raw_output, logs
+
+
+def dbt_run_through_python(
+    args: argparse.Namespace, models_list: List[str], target_path: str, run_index: int
+):
+    """Run DBT from the Python entry point in a subprocess."""
+    from multiprocessing import Pool
+
+    # It is important to split the first argument, since it contains the
+    # name of the executable ('dbt').
+    args = get_dbt_command_list(args, models_list)[1:]
+    args_as_text = " ".join(args)
+    logger.info(f"Running DBT with these options: {args_as_text}")
+
+    # We are going to use multiprocessing module to spawn a new
+    # process that will run the sub-function we have here. We
+    # don't really need a process pool, since we are only going
+    # to spawn a single process but it provides a nice abstraction
+    # over retrieving values from the process.
+
+    with Pool(processes=1) as pool:
+        return_code, raw_output, logs = pool.apply(
+            _dbt_run_through_python,
+            (args, target_path, run_index),
+        )
+
+    run_results = _get_index_run_results(target_path, run_index)
+    return DbtCliOutput(
+        command="dbt " + args_as_text,
+        return_code=return_code,
+        raw_output=raw_output,
+        logs=logs,
+        run_results=run_results,
+    )
+
+
+def _get_index_run_results(target_path: str, run_index: int) -> Dict[Any, Any]:
+    """Get run results for a given run index."""
+    with open(
+        os.path.join(target_path, f"fal_results_{run_index}.json")
+    ) as raw_results:
+        return json.load(raw_results)
