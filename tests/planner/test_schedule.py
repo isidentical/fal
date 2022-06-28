@@ -8,7 +8,7 @@ from fal.planner.plan import plan_graph
 from fal.planner.schedule import SUCCESS, schedule_graph
 from fal.planner.tasks import DBTTask, FalModelTask
 from tests.planner.data import GRAPH_1, GRAPHS
-from tests.planner.utils import to_graph
+from tests.planner.utils import to_graph, to_plan
 
 
 class ModelDict(defaultdict):
@@ -18,7 +18,7 @@ class ModelDict(defaultdict):
 
 def test_scheduler():
     graph = to_graph(GRAPH_1)
-    new_graph = plan_graph(graph)
+    new_graph = plan_graph(graph, to_plan(graph))
     node_graph = NodeGraph(graph, ModelDict(lambda: DbtModelNode("...", None)))
     scheduler = schedule_graph(new_graph, node_graph)
 
@@ -62,7 +62,7 @@ def test_scheduler():
 @pytest.mark.parametrize("graph_info", GRAPHS)
 def test_scheduler_task_separation(graph_info):
     graph = graph_info["graph"]
-    new_graph = plan_graph(graph)
+    new_graph = plan_graph(graph, to_plan(graph))
     node_graph = NodeGraph(graph, ModelDict(lambda: DbtModelNode("...", None)))
     scheduler = schedule_graph(new_graph, node_graph)
 
@@ -97,7 +97,7 @@ def test_scheduler_task_separation(graph_info):
 @pytest.mark.parametrize("graph_info", GRAPHS)
 def test_scheduler_dependency_management(graph_info):
     graph = graph_info["graph"]
-    new_graph = plan_graph(graph)
+    new_graph = plan_graph(graph, to_plan(graph))
     node_graph = NodeGraph(graph, ModelDict(lambda: DbtModelNode("...", None)))
     scheduler = schedule_graph(new_graph, node_graph)
 

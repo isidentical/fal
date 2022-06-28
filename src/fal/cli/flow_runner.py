@@ -58,9 +58,14 @@ def run_threaded(
     if parsed.experimental_threads <= 0:
         raise ValueError("Number of specified threads must be greater than 0")
 
+    execution_plan = ExecutionPlan.create_plan_from_graph(parsed, node_graph, fal_dbt)
+
     graph = __test_reorder_graph(node_graph.graph)
-    # The planner is temporarily disabled because of the thread exceeding problem.
-    # graph = plan_graph(node_graph.graph)
+    graph = plan_graph(
+        node_graph.graph,
+        execution_plan=execution_plan,
+        enable_chunking=False,
+    )
     scheduler = schedule_graph(graph, node_graph)
     parallel_executor(
         args=parsed,

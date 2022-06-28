@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import networkx as nx
+from fal.cli.selectors import ExecutionPlan
 
 
 def to_graph(data: list[tuple[str, dict[str, Any]]]) -> nx.DiGraph:
@@ -17,3 +18,7 @@ def to_graph(data: list[tuple[str, dict[str, Any]]]) -> nx.DiGraph:
     graph.add_nodes_from(nodes)
     graph.add_edges_from(edges)
     return graph
+
+
+def to_plan(graph: nx.DiGraph) -> ExecutionPlan:
+    return ExecutionPlan(list(graph.nodes), "<test>")

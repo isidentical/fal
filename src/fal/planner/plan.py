@@ -4,6 +4,7 @@ from typing import Iterator, List
 
 import networkx as nx
 from fal.node_graph import NodeKind
+from fal.cli.selectors import ExecutionPlan
 
 
 def _find_subgraphs(graph: nx.DiGraph) -> Iterator[List[str]]:
@@ -68,13 +69,25 @@ def _reduce_subgraph(
         graph.remove_node(node)
 
 
-def plan_graph(graph: nx.DiGraph) -> nx.DiGraph:
-    # Implementation of Gorkem's Critical Nodes Algorithm
-    # with a few modifications.
+def plan_graph(
+    graph: nx.DiGraph,
+    execution_plan: ExecutionPlan,
+    enable_chunking: bool = True,
+) -> nx.DiGraph:
+    """Apply the given execution plan to the given graph. If enabled,
+    also embeds multiple DBT nodes that meet certain criteria into
+    a single subgraph."""
     new_graph = graph.copy()
 
-    for nodes in _find_subgraphs(new_graph):
-        _reduce_subgraph(new_graph, nodes)
+    for node in graph.nodes:
+        if node not in execution_plan.dbt_models:
+            new_graph.remove_node(node)
+
+    if enable_chunking:
+        # Implementation of Gorkem's Critical Nodes Algorithm
+        # with a few modifications.
+        for nodes in _find_subgraphs(new_graph):
+            _reduce_subgraph(new_graph, nodes)
 
     return new_graph
 
