@@ -1,0 +1,34 @@
+version: 2
+
+models:
+  - name: model_a
+    meta:
+      fal:
+        pre-hook:
+          - url: https://github.com/isidentical/fal-packages-test
+            id: calculator
+            revision: main
+            with:
+              expression: 4 + 4
+
+          - url: https://github.com/isidentical/fal-packages-test
+            id: tell-a-joke
+            revision: main
+
+        post-hook:
+          - url: https://github.com/isidentical/fal-packages-test
+            id: tell-a-joke
+            revision: main
+
+          - url: https://github.com/isidentical/fal-packages-test
+            id: tell-a-joke
+            revision: main
+
+          - url: https://github.com/isidentical/fal-packages-test
+            id: tell-a-joke
+            revision: main
+
+  - name: model_b
+  - name: model_c # Python model
+  - name: model_d
+  - name: model_e # Python (notebook) model

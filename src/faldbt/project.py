@@ -3,7 +3,17 @@ import os.path
 import re
 from dataclasses import dataclass, field
 from functools import partialmethod
-from typing import Dict, Iterable, List, Any, Optional, Tuple, Sequence, Union
+from typing import (
+    Dict,
+    Iterable,
+    List,
+    Any,
+    Optional,
+    Tuple,
+    Sequence,
+    Union,
+    TYPE_CHECKING,
+)
 from pathlib import Path
 
 from dbt.node_types import NodeType
@@ -42,6 +52,9 @@ from decimal import Decimal
 import pandas as pd
 
 from fal.telemetry import telemetry
+
+if TYPE_CHECKING:
+    from fal.fal_script import Hook
 
 
 class FalGeneralException(Exception):
@@ -173,21 +186,46 @@ class DbtModel(_DbtTestableNode):
     def get_depends_on_nodes(self) -> List[str]:
         return self.node.depends_on_nodes
 
-    def _get_hook_paths(self, hook_type: str, keyword: str = "fal") -> List[str]:
+    def _get_hooks(self, hook_type: str, keyword: str = "fal") -> List["Hook"]:
+        from fal.fal_script import LocalHook, RemoteHook
+
         meta = self.meta or {}
 
         keyword_dict = meta.get(keyword) or {}
         if not isinstance(keyword_dict, dict):
             return []
 
-        hooks = keyword_dict.get(hook_type) or []
-        if not isinstance(hooks, list):
+        raw_hooks = keyword_dict.get(hook_type) or []
+        if not isinstance(raw_hooks, list):
             return []
+
+        # TODO: move this to a separate function
+        hooks = []
+        for raw_hook in raw_hooks:
+            hook = None
+            if isinstance(raw_hook, str):
+                hook = LocalHook(raw_hook)
+            elif isinstance(raw_hook, dict):
+                if "path" in raw_hook:
+                    hook = LocalHook(raw_hook["path"], raw_hook.get("with", {}))
+                elif "url" in raw_hook:
+                    # TODO: check these keys exist!
+                    hook = RemoteHook(
+                        raw_hook["url"],
+                        raw_hook["revision"],
+                        raw_hook["id"],
+                        raw_hook.get("with", {}),
+                    )
+
+            # TODO: better error reporting
+            if not hook:
+                raise ValueError(f"unsupported hook value: {raw_hook}")
+            hooks.append(hook)
 
         return hooks
 
-    get_pre_hook_paths = partialmethod(_get_hook_paths, hook_type="pre-hook")
-    get_post_hook_paths = partialmethod(_get_hook_paths, hook_type="post-hook")
+    get_pre_hook_paths = partialmethod(_get_hooks, hook_type="pre-hook")
+    get_post_hook_paths = partialmethod(_get_hooks, hook_type="post-hook")
 
     def get_scripts(self, keyword: str, *, before: bool) -> List[str]:
         # sometimes properties can *be* there and still be None

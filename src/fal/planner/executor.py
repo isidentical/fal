@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Iterator, List, Optional
 
 from fal.planner.schedule import SUCCESS, Scheduler
-from fal.planner.tasks import FalHookTask, TaskGroup, Task, Status, DBTTask
+from fal.planner.tasks import TaskGroup, Task, Status, DBTTask
 from faldbt.project import FalDbt
 
 from dbt.logger import GLOBAL_LOGGER as logger

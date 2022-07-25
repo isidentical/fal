@@ -3,7 +3,7 @@ import json
 from typing import Dict, Any, List, Optional, Union, Callable
 from pathlib import Path
 from functools import partial
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from deprecation import deprecated
 
 from faldbt.parse import normalize_path
@@ -14,6 +14,26 @@ from dbt.config.runtime import RuntimeConfig
 from dbt.logger import GLOBAL_LOGGER as logger
 
 from dbt.contracts.graph.parsed import ColumnInfo
+
+
+class Hook:
+    ...
+
+
+@dataclass
+class LocalHook(Hook):
+    path: str
+    arguments: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RemoteHook(Hook):
+    url: str
+    # TODO: drop the requirement on revision, if there is no
+    # revision we'll just get a fresh copy each time.
+    revision: str
+    id: str
+    arguments: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -84,7 +104,7 @@ class FalScript:
         object.__setattr__(script, "path", model.python_model)
         return script
 
-    def exec(self):
+    def exec(self, extra_globals: Optional[Dict[str, Any]] = None):
         """
         Executes the script
         """
@@ -105,6 +125,7 @@ class FalScript:
                 "list_features": self.faldbt.list_features,
                 "el": self.faldbt.el,
                 "execute_sql": self.faldbt.execute_sql,
+                **(extra_globals or {}),
             }
 
             if not self.is_hook:

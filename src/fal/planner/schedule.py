@@ -8,12 +8,28 @@ import networkx as nx
 from fal.node_graph import DbtModelNode, NodeGraph, NodeKind, ScriptNode
 from fal.planner.tasks import (
     SUCCESS,
+    Task,
     DBTTask,
-    FalHookTask,
+    FalRemoteHookTask,
+    FalLocalHookTask,
     FalModelTask,
     TaskGroup,
     Status,
 )
+from fal.fal_script import Hook, LocalHook, RemoteHook
+
+
+def create_hook_task(
+    hook: Hook,
+    bound_model: DbtModelNode,
+    bound_model_name: str,
+) -> Task:
+    if isinstance(hook, LocalHook):
+        # TODO: pass arguments somehow?
+        return FalLocalHookTask(hook.path, bound_model)
+    else:
+        assert isinstance(hook, RemoteHook)
+        return FalRemoteHookTask(hook, bound_model_name)
 
 
 def create_group(
@@ -42,31 +58,32 @@ def create_group(
     else:
         assert kind is NodeKind.FAL_SCRIPT
         assert isinstance(flow_node, ScriptNode)
-        task = FalHookTask.from_fal_script(flow_node.script)
+        task = FalLocalHookTask.from_fal_script(flow_node.script)
 
-    pre_hook_paths = properties.get("pre_hook", [])
-    post_hook_paths = properties.get("post_hook", [])
-    if pre_hook_paths or post_hook_paths:
+    pre_hooks = properties.get("pre_hook", [])
+    post_hooks = properties.get("post_hook", [])
+    if pre_hooks or post_hooks:
         assert flow_node, "hook nodes must be attached to a model node"
         assert isinstance(flow_node, DbtModelNode)
 
-
-    pre_hooks = [
-        FalHookTask(
-            hook_path=hook_path,
-            bound_model=flow_node.model
-        )
-        for hook_path in pre_hook_paths
-    ]
-    post_hooks = [
-        FalHookTask(
-            hook_path=hook_path,
+    pre_hook_tasks = [
+        create_hook_task(
+            hook=hook,
             bound_model=flow_node.model,
+            bound_model_name=model_ids[-1],
         )
-        for hook_path in post_hook_paths
+        for hook in pre_hooks
+    ]
+    post_hook_tasks = [
+        create_hook_task(
+            hook=hook,
+            bound_model=flow_node.model,
+            bound_model_name=model_ids[-1],
+        )
+        for hook in post_hooks
     ]
 
-    return TaskGroup(task, pre_hooks=pre_hooks, post_hooks=post_hooks)
+    return TaskGroup(task, pre_hooks=pre_hook_tasks, post_hooks=post_hook_tasks)
 
 
 @dataclass

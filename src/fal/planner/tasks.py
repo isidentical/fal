@@ -14,6 +14,7 @@ from dbt.logger import GLOBAL_LOGGER as logger
 
 from fal.node_graph import FalScript
 from fal.utils import print_run_info
+from fal.fal_script import RemoteHook
 from faldbt.project import DbtModel, FalDbt, NodeStatus
 
 SUCCESS = 0
@@ -142,7 +143,7 @@ class FalModelTask(DBTTask):
 
 
 @dataclass
-class FalHookTask(Task):
+class FalLocalHookTask(Task):
     hook_path: Path
     bound_model: Optional[DbtModel] = None
     is_hook: bool = True
@@ -160,16 +161,33 @@ class FalHookTask(Task):
         return cls(script.path, script.model, script.is_hook)
 
     def build_fal_script(self, fal_dbt: FalDbt):
-        return FalScript(
-            fal_dbt, self.bound_model, str(self.hook_path), self.is_hook
-        )
+        return FalScript(fal_dbt, self.bound_model, str(self.hook_path), self.is_hook)
+
+
+@dataclass
+class FalRemoteHookTask(Task):
+    remote_hook: RemoteHook
+    bound_model_name: str
+
+    def execute(self, args: argparse.Namespace, fal_dbt: FalDbt) -> int:
+        from fal.packages import Package
+
+        package = Package(self.remote_hook.url, self.remote_hook.revision)
+        hook = package.get_hook(self.remote_hook.id)
+        try:
+            hook.run(fal_dbt, self.remote_hook.arguments, self.bound_model_name)
+        except Exception as exc:
+            raise
+            return FAILURE
+        else:
+            return SUCCESS
 
 
 @dataclass
 class TaskGroup:
     task: Task
-    pre_hooks: List[FalHookTask] = field(default_factory=list)
-    post_hooks: List[FalHookTask] = field(default_factory=list)
+    pre_hooks: List[Task] = field(default_factory=list)
+    post_hooks: List[Task] = field(default_factory=list)
     dependencies: List[TaskGroup] = field(default_factory=list)
     status: Status = Status.PENDING
 
