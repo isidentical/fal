@@ -1,5 +1,5 @@
 import multiprocessing
-from multiprocessing import Pool
+from multiprocessing.connection import Connection
 from typing import Any, Dict, Optional, List
 import warnings
 import json
@@ -90,7 +90,9 @@ def get_dbt_command_list(args: argparse.Namespace, models_list: List[str]) -> Li
 # imitate the existing behavior of `dbt_run()` (in terms of performance).
 
 
-def _dbt_run_through_python(args: List[str], target_path: str, run_index: int):
+def _dbt_run_through_python(
+    args: List[str], target_path: str, run_index: int, connection: Connection
+):
     # logbook is currently using deprecated APIs internally, which is causing
     # a crash. We'll mirror the solution from DBT, until it is fixed on
     # upstream.
@@ -118,9 +120,17 @@ def _dbt_run_through_python(args: List[str], target_path: str, run_index: int):
     if run_results is not None:
         run_results.write(os.path.join(target_path, f"fal_results_{run_index}.json"))
     else:
-        raise RuntimeError("Error running dbt run") from exc
+        connection.send(exc)
+        return
 
-    return return_code
+    connection.send(return_code)
+
+
+def _propagate_result(connection: Connection) -> int:
+    return_val = connection.recv()
+    if isinstance(return_val, Exception):
+        raise return_val
+    return return_val
 
 
 def dbt_run_through_python(
@@ -143,12 +153,16 @@ def dbt_run_through_python(
     # to spawn a single process but it provides a nice abstraction
     # over retrieving values from the process.
 
-    with Pool(processes=1) as pool:
-        return_code = pool.apply(
-            _dbt_run_through_python,
-            (args_list, target_path, run_index),
-        )
+    p_connection, c_connection = multiprocessing.Pipe()
+    process = multiprocessing.Process(
+        target=_dbt_run_through_python,
+        args=(args_list, target_path, run_index, c_connection),
+    )
+    process.start()
+    return_code = _propagate_result(p_connection)
+    process.join()
 
+    assert return_code is not None
     run_results = _get_index_run_results(target_path, run_index)
     return DbtCliOutput(
         command=cmd_str,
