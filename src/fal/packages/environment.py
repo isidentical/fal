@@ -8,7 +8,7 @@ import threading
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from functools import cached_property, partial
+from functools import partial
 from pathlib import Path
 from typing import (
     Any,
@@ -54,7 +54,7 @@ def _get_default_requirements() -> Iterator[Tuple[str, Optional[str]]]:
             yield dynamic_dependency.name, dynamic_dependency.version
 
 
-HookRunner = Callable[[FalDbt, Path, str, Dict[str, Any], int], int]
+HookRunner = Callable[[FalDbt, Path, str, Dict[str, Any], int, bool], int]
 
 
 @contextmanager
@@ -81,7 +81,9 @@ class VirtualPythonEnvironment(BaseEnvironment):
     #
     # We might think about introducing a file-lock, which would
     # allow this scenerio in the future.
-    _VENV_LOCKS: ClassVar[DefaultDict[threading.Lock]] = defaultdict(threading.Lock)
+    _VENV_LOCKS: ClassVar[DefaultDict[str, threading.Lock]] = defaultdict(
+        threading.Lock
+    )
 
     def __post_init__(self) -> None:
         self.requirements.extend(
@@ -89,7 +91,7 @@ class VirtualPythonEnvironment(BaseEnvironment):
             for key, value in _get_default_requirements()
         )
 
-    @cached_property
+    @property
     def _key(self) -> str:
         crypt = hashlib.sha256()
         crypt.update(" ".join(self.requirements).encode())
@@ -104,7 +106,7 @@ class VirtualPythonEnvironment(BaseEnvironment):
         from virtualenv import cli_run
 
         path = _BASE_VENV_DIR / self._key
-        with self._VENV_LOCKS[self._key]:
+        with self._VENV_LOCKS[str(path)]:
             with _clear_on_fail(path):
                 if path.exists():
                     return path
@@ -126,6 +128,7 @@ class VirtualPythonEnvironment(BaseEnvironment):
         arguments: Dict[str, Any],
         bound_model_name: str,
         run_index: int,
+        disable_logging: bool,
     ) -> int:
         python_path = venv_path / "bin" / "python"
         data = json.dumps(
@@ -135,6 +138,7 @@ class VirtualPythonEnvironment(BaseEnvironment):
                 "fal_dbt_config": fal_dbt._serialize(),
                 "arguments": arguments,
                 "run_index": run_index,
+                "disable_logging": disable_logging,
             }
         )
 
@@ -153,5 +157,5 @@ class VirtualPythonEnvironment(BaseEnvironment):
         return SUCCESS if process.wait() == 0 else FAILURE
 
 
-def create_environment(*, requirements: Optional[List[str]] = None) -> BaseEnvironment:
+def create_environment(*, requirements: List[str]) -> BaseEnvironment:
     return VirtualPythonEnvironment(requirements=requirements)
