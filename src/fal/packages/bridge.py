@@ -15,11 +15,12 @@
 
 from __future__ import annotations
 
+import base64
 from contextlib import closing
 from functools import partial
 from multiprocessing.connection import Client, ConnectionWrapper, Listener
+from typing import Union
 
-import base64
 import dill
 
 dill_wrapper = partial(ConnectionWrapper, dumps=dill.dumps, loads=dill.loads)
@@ -38,7 +39,11 @@ def child_connection(address: bytes) -> ConnectionWrapper:
     return closing(dill_wrapper(Client(address)))
 
 
-def encode_service_address(address: bytes) -> str:
+def encode_service_address(address: Union[bytes, str]) -> str:
+    # On some platforms the connection address might be a string.
+    if isinstance(address, str):
+        address = address.encode()
+
     return base64.b64encode(address).decode("utf-8")
 
 

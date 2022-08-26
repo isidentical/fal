@@ -67,14 +67,22 @@ class BaseEnvironment:
         # client. This restriction might change in the future.
         logger.debug("Starting the controller bridge.")
         with bridge.controller_connection() as controller_service:
-            logger.debug("Controller connection is established at {}", controller_service.address)
+            logger.debug(
+                "Controller connection is established at {}", controller_service.address
+            )
             with self._prepare_client(
                 controller_service, *args, **kwargs
             ) as connection:
-                logger.info("Child connection has been established at the bridge {}", controller_service.address)
+                logger.info(
+                    "Child connection has been established at the bridge {}",
+                    controller_service.address,
+                )
                 # TODO: check_alive() here.
                 connection.send(executable)
-                logger.info("Awaiting the child process to exit at {}", controller_service.address)
+                logger.info(
+                    "Awaiting the child process to exit at {}",
+                    controller_service.address,
+                )
                 return self._receive_status(connection)
 
     def _receive_status(self, connection: bridge.ConnectionWrapper) -> int:
