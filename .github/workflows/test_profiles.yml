@@ -164,6 +164,14 @@ jobs:
         if: contains(fromJSON('["redshift", "postgres"]'), matrix.profile)
         run: docker-compose up -d
 
+      - name: Install conda
+        uses: s-weigand/setup-conda@v1
+        with:
+          activate-conda: false
+          python-version: ${{ matrix.python }}
+          # PyJokes is available on conda-forge
+          conda-channels: anaconda, conda-forge
+
       - name: Setup behave
         working-directory: integration_tests
         run: pip install behave

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import importlib_metadata
 from pathlib import Path
-from typing import Iterator, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
+
+import importlib_metadata
+
+from fal.utils import cache_static
 
 
 def _get_dbt_packages() -> Iterator[Tuple[str, str]]:
@@ -38,3 +41,11 @@ def get_default_requirements() -> Iterator[Tuple[str, Optional[str]]]:
         yield "fal", raw_fal_version
 
     yield from _get_dbt_packages()
+
+
+@cache_static
+def get_default_pip_dependencies() -> List[str]:
+    return [
+        f"{package}=={version}" if version else package
+        for package, version in get_default_requirements()
+    ]
